@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام بسملة محمد عزت | Basmala POS</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root { --main: #1a4c8d; --bg: #f4f7f6; --card: #ffffff; --text: #1e293b; }
+        .dark { --main: #4a90e2; --bg: #0f172a; --card: #1e293b; --text: #f1f5f9; }
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 90px; transition: 0.3s; }
+        header { background: linear-gradient(135deg, var(--main), #000); color: white; padding: 30px; text-align: center; border-radius: 0 0 40px 40px; }
+        .container { padding: 15px; }
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+        .card { background: var(--card); padding: 20px; border-radius: 25px; margin-bottom: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); }
+        .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+        .stat-box { background: var(--card); padding: 15px; border-radius: 20px; text-align: center; border-bottom: 4px solid var(--main); }
+        input, select { width: 100%; padding: 14px; border: 1.5px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; background: var(--card); color: var(--text); }
+        .bottom-nav { position: fixed; bottom: 0; width: 100%; background: var(--card); display: flex; justify-content: space-around; padding: 12px 0; border-top: 1px solid #eee; }
+        .nav-item { border: none; background: none; color: #94a3b8; cursor: pointer; display: flex; flex-direction: column; align-items: center; font-size: 11px; }
+        .nav-item.active { color: var(--main); font-weight: bold; }
+        .btn-pay { background: var(--main); color: white; border: none; padding: 10px 20px; border-radius: 10px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div id="lock-screen" style="position:fixed; inset:0; background:var(--main); z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; color:white;">
+    <h2>نظام بسملة المحاسبي</h2>
+    <input type="password" id="pass" style="width:60%; text-align:center;" placeholder="رمز الدخول">
+    <button onclick="if(document.getElementById('pass').value==='2026')document.getElementById('lock-screen').remove()" style="padding:10px 30px; border-radius:10px; border:none;">دخول</button>
+</div>
+
+<header>
+    <h2 style="margin:0;">Basmala POS</h2>
+    <small>إدارة بسملة محمد عزت | طما</small>
+</header>
+
+<div class="container">
+    <section id="home" class="view-section active">
+        <div class="stat-grid">
+            <div class="stat-box">المحصل<b id="paid-total">0</b></div>
+            <div class="stat-box">المتبقي<b id="remain-total">0</b></div>
+        </div>
+        <input type="text" id="search" placeholder="🔍 ابحثي عن عميل..." onkeyup="render()">
+        <div id="list"></div>
+    </section>
+
+    <section id="add" class="view-section">
+        <div class="card">
+            <h3>إضافة عملية جديدة</h3>
+            <input type="text" id="c-name" placeholder="اسم العميل">
+            <input type="number" id="c-price" placeholder="المبلغ">
+            <select id="c-curr">
+                <option value="ج.م">جنيه مصري (EGP)</option>
+                <option value="USDT">دولار رقمي (USDT)</option>
+                <option value="$">دولار (USD)</option>
+            </select>
+            <input type="number" id="c-day" placeholder="يوم القسط">
+            <button onclick="add()" class="btn-pay" style="width:100%">حفظ العملية</button>
+        </div>
+    </section>
+</div>
+
+<nav class="bottom-nav">
+    <button class="nav-item active" onclick="show('home', this)"><span>🏠</span>الرئيسية</button>
+    <button class="nav-item" onclick="show('add', this)"><span>➕</span>إضافة</button>
+    <button class="nav-item" onclick="downloadPDF()"><span>📥</span>تقرير PDF</button>
+</nav>
+
+<script>
+    function show(id, btn) {
+        document.querySelectorAll('.view-section').forEach(s => s.classList.remove('active'));
+        document.getElementById(id).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+        btn.classList.add('active');
+    }
+
+    function add() {
+        let n = document.getElementById('c-name').value, p = document.getElementById('c-price').value, 
+            c = document.getElementById('c-curr').value, d = document.getElementById('c-day').value;
+        if(!n || !p) return;
+        let data = JSON.parse(localStorage.getItem('basmala_data')) || [];
+        data.push({id: Date.now(), name: n, price: p, curr: c, day: d, paid: false});
+        localStorage.setItem('basmala_data', JSON.stringify(data));
+        render(); show('home', document.querySelector('.nav-item'));
+    }
+
+    function toggle(id) {
+        let data = JSON.parse(localStorage.getItem('basmala_data'));
+        let i = data.find(x => x.id === id); i.paid = !i.paid;
+        localStorage.setItem('basmala_data', JSON.stringify(data));
+        render();
+    }
+
+    function render() {
+        let data = JSON.parse(localStorage.getItem('basmala_data')) || [];
+        let s = document.getElementById('search').value.toLowerCase();
+        let cont = document.getElementById('list');
+        let pT = 0, rT = 0; cont.innerHTML = "";
+        data.forEach(x => {
+            if(x.paid) pT += parseFloat(x.price); else rT += parseFloat(x.price);
+            if(x.name.toLowerCase().includes(s)) {
+                cont.innerHTML += `<div class="card" style="border-right:8px solid ${x.paid?'#10b981':'#1a4c8d'}">
+                    <div style="display:flex; justify-content:space-between">
+                        <div><b>${x.name}</b><br><small>${x.price} ${x.curr} | يوم ${x.day}</small></div>
+                        <button onclick="toggle(${x.id})" class="btn-pay" style="background:${x.paid?'#94a3b8':''}">
+                            ${x.paid?'تراجع':'تم ✅'}
+                        </button>
+                    </div>
+                </div>`;
+            }
+        });
+        document.getElementById('paid-total').innerText = pT;
+        document.getElementById('remain-total').innerText = rT;
+    }
+    function downloadPDF() { html2pdf().from(document.getElementById('list')).save('حسابات_بسملة.pdf'); }
+    render();
+</script>
+</body>
+</html>
